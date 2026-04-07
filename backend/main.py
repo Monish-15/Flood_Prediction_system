@@ -1,9 +1,5 @@
 """
 backend/main.py — FastAPI application for flood risk prediction.
-
-Start with:
-    cd d:\\Flood_Prediction_system
-    uvicorn backend.main:app --reload --port 8000
 """
 
 import os
@@ -47,7 +43,7 @@ clf, scaler = _load_model()
 app = FastAPI(
     title="🌊 Flood Prediction API",
     description="Real-time flood risk prediction using Machine Learning and Open-Meteo weather data.",
-    version="1.0.0",
+    version="1.1.2",
 )
 
 app.add_middleware(
@@ -56,11 +52,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ── Static Frontend ────────────────────────────────────────────────────────
 # Check if frontend folder exists (avoids error if only backend is pushed)
-frontend_dir = os.path.join(BASE_DIR, "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
+if not os.path.exists(frontend_dir):
+    frontend_dir = os.path.join(BASE_DIR, "frontend-react")
 
 @app.on_event("startup")
 def startup_event():
@@ -141,29 +138,16 @@ def _save_prediction(db: Session, weather: dict, risk: str, prob: float,
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.get("/", include_in_schema=False)
-def serve_home():
-    """Serve the premium integrated dashboard."""
-    html_path = os.path.join(BASE_DIR, "frontend", "index.html")
-    if os.path.exists(html_path):
-        return FileResponse(html_path)
-    return {
-        "status":  "online",
-        "service": "Flood Prediction API",
-        "message": "Frontend not found, but API is live."
-    }
-
-
 @app.get("/health", tags=["Health"])
 def health():
     return {
         "status":  "online",
         "service": "Flood Prediction API",
-        "version": "1.1.0",
+        "version": "1.1.2",
     }
 
 
-@app.get("/predict", response_model=PredictionResponse, tags=["Prediction"])
+@app.get("/api/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict_default(db: Session = Depends(get_db)):
     """
     Fetch live weather for default location (Chennai, India)
@@ -172,7 +156,7 @@ def predict_default(db: Session = Depends(get_db)):
     return _predict_for_location(DEFAULT_LAT, DEFAULT_LON, "Chennai, India", db)
 
 
-@app.get("/predict/{lat}/{lon}", response_model=PredictionResponse, tags=["Prediction"])
+@app.get("/api/predict/{lat}/{lon}", response_model=PredictionResponse, tags=["Prediction"])
 def predict_custom(lat: float, lon: float,
                    location: str = Query(default="Custom Location"),
                    db: Session = Depends(get_db)):
@@ -192,7 +176,10 @@ def _predict_for_location(lat: float, lon: float, location: str,
         )
 
     risk, prob = _predict(weather)
-    _save_prediction(db, weather, risk, prob, lat, lon, location)
+    try:
+        _save_prediction(db, weather, risk, prob, lat, lon, location)
+    except Exception as e:
+        print(f"[db] Warning: could not save prediction: {e}")
 
     if risk == "HIGH":
         msg = ("⚠️  HIGH FLOOD RISK detected. "
@@ -217,7 +204,7 @@ def _predict_for_location(lat: float, lon: float, location: str,
     }
 
 
-@app.get("/history", response_model=List[PredictionRecord], tags=["History"])
+@app.get("/api/history", response_model=List[PredictionRecord], tags=["History"])
 def get_history(limit: int = Query(default=50, ge=1, le=500),
                 db: Session = Depends(get_db)):
     """Return the last N prediction records (default 50)."""
@@ -246,9 +233,20 @@ def get_history(limit: int = Query(default=50, ge=1, le=500),
     ]
 
 
-@app.delete("/history", tags=["History"])
+@app.delete("/api/history", tags=["History"])
 def clear_history(db: Session = Depends(get_db)):
     """Delete all stored predictions."""
-    deleted = db.query(Prediction).delete()
-    db.commit()
-    return {"message": f"Deleted {deleted} records."}
+    try:
+        deleted = db.query(Prediction).delete()
+        db.commit()
+        return {"message": f"Deleted {deleted} records."}
+    except Exception as e:
+        return {"error": str(e)}
+
+# ── Serve Frontend Last (Catch-all) ───────────────────────────────────────────
+# If the root isn't called for API, it might be for the UI
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str):
+    # This is only for local dev if they visit an unknown path
+    # In Vercel, the static build handles this.
+    return {"status": "Try visiting /api/predict"}
