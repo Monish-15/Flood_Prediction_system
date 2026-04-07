@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌊 Flood Prediction Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0a0e1a;
+            --bg-card: rgba(255, 255, 255, 0.05);
+            --accent-blue: #4fc3f7;
+            --risk-high: #ff4444;
+            --risk-low: #00e676;
+            --text-main: #cdd9e5;
+            --text-muted: #8899aa;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0d1b2a 50%, #0a1628 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo h1 { font-size: 1.5rem; font-weight: 800; color: var(--accent-blue); letter-spacing: -0.5px; }
+        .logo p { font-size: 0.8rem; color: var(--text-muted); }
+
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            background: var(--bg-card);
+            padding: 5px 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .search-bar input {
+            background: transparent;
+            border: none;
+            color: white;
+            outline: none;
+            padding: 8px;
+            width: 250px;
+        }
+
+        .search-bar button {
+            background: var(--accent-blue);
+            border: none;
+            border-radius: 8px;
+            padding: 0 15px;
+            color: var(--bg-dark);
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 300px;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 1.5rem;
+            transition: transform 0.2s;
+        }
+
+        .risk-card {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 350px;
+        }
+
+        .risk-card.high {
+            border: 2px solid var(--risk-high);
+            box-shadow: 0 0 40px rgba(255, 68, 68, 0.2);
+            animation: pulse-high 2s infinite;
+        }
+        .risk-card.low {
+            border: 2px solid var(--risk-low);
+            box-shadow: 0 0 40px rgba(0, 230, 118, 0.1);
+        }
+
+        @keyframes pulse-high {
+            0%, 100% { box-shadow: 0 0 40px rgba(255, 68, 68, 0.2); }
+            50% { box-shadow: 0 0 60px rgba(255, 68, 68, 0.5); }
+        }
+
+        .risk-val { font-size: 3.5rem; font-weight: 900; margin: 15px 0; }
+        .risk-label { text-transform: uppercase; letter-spacing: 2px; font-weight: 600; opacity: 0.8; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .metric-item {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+
+        .metric-icon { color: var(--accent-blue); margin-bottom: 10px; }
+        .metric-val { font-size: 1.4rem; font-weight: 700; }
+        .metric-unit { font-size: 0.7rem; color: var(--text-muted); }
+        .metric-name { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); margin-top: 5px; }
+
+        .history-card {
+            grid-column: 1 / -1;
+            overflow-x: auto;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th { text-align: left; padding: 12px; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; }
+        td { padding: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.9rem; }
+
+        .tag { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
+        .tag-high { background: rgba(255, 68, 68, 0.2); color: var(--risk-high); }
+        .tag-low { background: rgba(0, 230, 118, 0.2); color: var(--risk-low); }
+
+        #main-chart { height: 350px; }
+
+        .loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-dark); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+            transition: opacity 0.5s;
+        }
+        .spinner { width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="loader" class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px;">Fetching global flood data...</p>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <h1>🌊 FloodGuard Vercel</h1>
+                <p>AI-Powered Management Platform</p>
+            </div>
+            <div class="search-bar">
+                <i data-lucide="map-pin" size="18" style="color: var(--text-muted); margin-top: 5px;"></i>
+                <input type="text" id="city-input" placeholder="Search city (e.g. London, Chennai)..." value="Chennai">
+                <button onclick="updatePrediction()">Predict</button>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Risk Status -->
+            <div id="risk-display" class="card risk-card">
+                <div class="risk-label">Current Risk</div>
+                <div id="risk-value" class="risk-val">---</div>
+                <div id="risk-prob" style="color: var(--text-muted)">Confidence: 0%</div>
+                <div id="current-location" style="margin-top: 15px; font-weight: 600;">Location</div>
+            </div>
+
+            <!-- Main Environmental Viz -->
+            <div class="card">
+                <div id="main-chart"></div>
+            </div>
+
+            <!-- Side Info -->
+            <div class="card" style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Condition</div>
+                <div id="weather-desc" style="font-size: 1.2rem; font-weight: 700;">Loading...</div>
+                <hr style="opacity: 0.1">
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Last Update</div>
+                <div id="update-time" style="color: var(--accent-blue);">--:--:--</div>
+                <div id="update-date" style="font-size: 0.8rem; opacity: 0.6;">----/--/--</div>
+            </div>
+        </div>
+
+        <div class="metrics-grid" id="metrics-container" style="margin-bottom: 1.5rem;">
+            <!-- Metrics will be injected here -->
+        </div>
+
+        <div class="card history-card">
+            <h3 style="margin-bottom: 1rem; color: var(--accent-blue);">📜 Prediction History</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Location</th>
+                        <th>Rainfall</th>
+                        <th>River Lvl</th>
+                        <th>Risk</th>
+                        <th>Conf.</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        async function fetchAPI(endpoint, method = 'GET') {
+            try {
+                const res = await fetch(endpoint, { method });
+                return await res.json();
+            } catch (e) {
+                console.error(e);
+                return null;
+            }
+        }
+
+        async function updatePrediction() {
+            const city = document.getElementById('city-input').value;
+            const loader = document.getElementById('loader');
+            loader.style.opacity = 1;
+            loader.style.display = 'flex';
+
+            // Use geocoding for search
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`);
+            const geoData = await geoRes.json();
+            
+            let data;
+            if (geoData && geoData.length > 0) {
+                const lat = geoData[0].lat;
+                const lon = geoData[0].lon;
+                data = await fetchAPI(`/predict/${lat}/${lon}?location=${encodeURIComponent(city)}`);
+            } else {
+                data = await fetchAPI(`/predict`);
+            }
+
+            if (data) {
+                renderDashboard(data);
+                fetchHistory();
+            }
+            
+            loader.style.opacity = 0;
+            setTimeout(() => loader.style.display = 'none', 500);
+        }
+
+        function renderDashboard(data) {
+            const riskDisplay = document.getElementById('risk-display');
+            const riskVal = document.getElementById('risk-value');
+            const riskProb = document.getElementById('risk-prob');
+            const weatherDesc = document.getElementById('weather-desc');
+            const locText = document.getElementById('current-location');
+            
+            riskVal.innerText = data.risk_level;
+            riskProb.innerText = `Confidence: ${(data.risk_probability * 100).toFixed(1)}%`;
+            weatherDesc.innerText = data.weather_desc;
+            locText.innerText = data.location;
+
+            riskDisplay.className = 'card risk-card ' + (data.risk_level === 'HIGH' ? 'high' : 'low');
+            riskVal.style.color = data.risk_level === 'HIGH' ? 'var(--risk-high)' : 'var(--risk-low)';
+
+            const ts = new Date(data.timestamp);
+            document.getElementById('update-time').innerText = ts.toLocaleTimeString();
+            document.getElementById('update-date').innerText = ts.toLocaleDateString();
+
+            // Render Metrics
+            const metrics = [
+                { id: 'rain', icon: 'cloud-rain', val: data.rainfall_mm, unit: 'mm', name: 'Rainfall' },
+                { id: 'river', icon: 'waves', val: data.river_level_m.toFixed(2), unit: 'm', name: 'River' },
+                { id: 'temp', icon: 'thermometer', val: data.temperature_c, unit: '°C', name: 'Temp' },
+                { id: 'hum', icon: 'droplets', val: data.humidity_pct, unit: '%', name: 'Humidity' },
+                { id: 'wind', icon: 'wind', val: data.wind_speed_kmh, unit: 'km/h', name: 'Wind' }
+            ];
+
+            const container = document.getElementById('metrics-container');
+            container.innerHTML = metrics.map(m => `
+                <div class="metric-item">
+                    <i data-lucide="${m.icon}" class="metric-icon"></i>
+                    <div class="metric-val">${m.val}<span class="metric-unit">${m.unit}</span></div>
+                    <div class="metric-name">${m.name}</div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+
+            // Chart
+            const trace = {
+                x: ['Rainfall', 'River Lvl', 'Humidity', 'Temp', 'Wind'],
+                y: [data.rainfall_mm, data.river_level_m * 10, data.humidity_pct, data.temperature_c, data.wind_speed_kmh],
+                type: 'bar',
+                marker: { color: ['#4fc3f7', '#29b6f6', '#0288d1', '#f48fb1', '#81c784'] }
+            };
+
+            const layout = {
+                title: 'Live Environmental Profile',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#8899aa' },
+                margin: { t: 40, b: 40, l: 40, r: 20 },
+                xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },
+                yaxis: { gridcolor: 'rgba(255,255,255,0.05)' }
+            };
+
+            Plotly.newPlot('main-chart', [trace], layout, { responsive: true, displayModeBar: false });
+        }
+
+        async function fetchHistory() {
+            const data = await fetchAPI('/history?limit=10');
+            if (!data) return;
+
+            const tbody = document.getElementById('history-body');
+            tbody.innerHTML = data.map(r => `
+                <tr>
+                    <td>${new Date(r.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td>${r.location}</td>
+                    <td>${r.rainfall_mm}mm</td>
+                    <td>${r.river_level_m}m</td>
+                    <td><span class="tag tag-${r.risk_level.toLowerCase()}">${r.risk_level}</span></td>
+                    <td>${(r.risk_probability * 100).toFixed(0)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // Initial load
+        updatePrediction();
+    </script>
+</body>
+</html>

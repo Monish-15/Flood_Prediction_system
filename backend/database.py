@@ -8,8 +8,13 @@ from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH  = os.path.join(BASE_DIR, "..", "flood_predictions.db")
-DB_URL   = f"sqlite:///{os.path.normpath(DB_PATH)}"
+
+if os.environ.get("VERCEL"):
+    DB_PATH = "/tmp/flood_predictions.db"
+else:
+    DB_PATH = os.path.join(BASE_DIR, "..", "flood_predictions.db")
+
+DB_URL = f"sqlite:///{os.path.normpath(DB_PATH)}"
 
 engine       = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

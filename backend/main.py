@@ -17,6 +17,8 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # ── Path setup so we can import sibling modules ───────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -54,6 +56,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# ── Static Frontend ────────────────────────────────────────────────────────
+# Check if frontend folder exists (avoids error if only backend is pushed)
+frontend_dir = os.path.join(BASE_DIR, "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 @app.on_event("startup")
 def startup_event():
@@ -134,12 +141,25 @@ def _save_prediction(db: Session, weather: dict, risk: str, prob: float,
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.get("/", tags=["Health"])
+@app.get("/", include_in_schema=False)
+def serve_home():
+    """Serve the premium integrated dashboard."""
+    html_path = os.path.join(BASE_DIR, "frontend", "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return {
+        "status":  "online",
+        "service": "Flood Prediction API",
+        "message": "Frontend not found, but API is live."
+    }
+
+
+@app.get("/health", tags=["Health"])
 def health():
     return {
         "status":  "online",
         "service": "Flood Prediction API",
-        "version": "1.0.0",
+        "version": "1.1.0",
     }
 
 
@@ -190,7 +210,7 @@ def _predict_for_location(lat: float, lon: float, location: str,
         "humidity_pct":    weather["humidity_pct"],
         "temperature_c":   weather["temperature_c"],
         "wind_speed_kmh":  weather["wind_speed_kmh"],
-        "weather_desc":    weather_description(weather["weather_code"]),
+        "weather_desc":    weather.get("weather_desc", weather_description(weather.get("weather_code", 0))),
         "risk_level":      risk,
         "risk_probability": prob,
         "message":         msg,

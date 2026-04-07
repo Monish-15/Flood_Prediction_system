@@ -276,51 +276,40 @@ with st.sidebar:
     )
 
     if loc_mode == "🔍 Search City":
-        # Group cities by region for the expander labels
-        regions = sorted({c["region"] for c in CITIES})
+        if "search_query" not in st.session_state:
+            st.session_state.search_query = "Coimbatore"
+            
+        search_query = st.text_input("Enter city name", value=st.session_state.search_query, help="e.g. London, Tokyo, Coimbatore")
+        st.session_state.search_query = search_query
 
-        # Searchable selectbox — Streamlit's selectbox supports typing to filter
-        selected_city = st.selectbox(
-            "Search or select a city",
-            options=CITY_NAMES,
-            index=0,
-            help="Type to search — e.g. 'Mumbai', 'Bangkok', 'New Orleans'",
-        )
-        city_data = CITY_MAP[selected_city]
-        lat_in    = city_data["lat"]
-        lon_in    = city_data["lon"]
-        loc_name  = city_data["name"]
-
-        # Region quick-filters
-        with st.expander("🗂️ Browse by region", expanded=False):
-            for region in regions:
+        # Geocode the search_query using OpenStreetMap (Nominatim) - Free and no API key required!
+        geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(search_query)}&format=json&limit=1"
+        
+        try:
+            # We must specify a user-agent for Nominatim to prevent rejection
+            headers = {"User-Agent": "FloodPredictionApp/1.0"}
+            geo_res = requests.get(geo_url, headers=headers).json()
+            
+            if isinstance(geo_res, list) and len(geo_res) > 0:
+                lat_in = float(geo_res[0]["lat"])
+                lon_in = float(geo_res[0]["lon"])
+                loc_name = geo_res[0].get("display_name", search_query).split(",")[0]
+                
+                # Show coords info card
                 st.markdown(
-                    f"<span style='color:#4fc3f7; font-weight:600'>{region}</span>",
+                    f"<div style='background:rgba(79,195,247,0.08); border:1px solid rgba(79,195,247,0.2);"
+                    f"border-radius:8px; padding:10px; margin-top:8px; font-size:0.8rem;'>"
+                    f"<b style='color:#4fc3f7'>✅ Found: {loc_name}</b><br>"
+                    f"<span style='color:#8899aa'>Lat: {lat_in:.4f} &nbsp;|&nbsp; Lon: {lon_in:.4f}</span>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
-                region_cities = [c["name"] for c in CITIES if c["region"] == region]
-                for city in region_cities:
-                    if st.button(city, key=f"city_{city}", use_container_width=True):
-                        st.session_state["selected_city_override"] = city
-                        st.rerun()
-
-        # Apply override if a browse button was clicked
-        if "selected_city_override" in st.session_state:
-            override = st.session_state.pop("selected_city_override")
-            city_data = CITY_MAP.get(override, city_data)
-            lat_in    = city_data["lat"]
-            lon_in    = city_data["lon"]
-            loc_name  = city_data["name"]
-
-        # Show coords info card
-        st.markdown(
-            f"<div style='background:rgba(79,195,247,0.08); border:1px solid rgba(79,195,247,0.2);"
-            f"border-radius:8px; padding:10px; margin-top:8px; font-size:0.8rem;'>"
-            f"<b style='color:#4fc3f7'>{loc_name}</b><br>"
-            f"<span style='color:#8899aa'>Lat: {lat_in:.4f} &nbsp;|&nbsp; Lon: {lon_in:.4f}</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+            else:
+                st.error(f"City '{search_query}' not found. Using fallback.")
+                lat_in, lon_in, loc_name = 11.0055, 76.9661, "Coimbatore"
+        except Exception:
+            st.error("Geocoding service unavailable. Using fallback.")
+            lat_in, lon_in, loc_name = 11.0055, 76.9661, "Coimbatore"
 
     else:  # Custom Coordinates
         col1, col2 = st.columns(2)
